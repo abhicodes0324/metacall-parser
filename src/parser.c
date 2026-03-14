@@ -11,6 +11,37 @@
 /* Language function declarations from grammar repos */
 const TSLanguage *tree_sitter_python(void);
 const TSLanguage *tree_sitter_javascript(void);
+const TSLanguage *tree_sitter_ruby(void);
+
+/* Forward declarations for extractors */
+typedef int (*extract_fn)(const TSTree *tree, const char *source, mcp_file_result *out);
+
+extern int python_extract(const TSTree *tree, const char *source, mcp_file_result *out);
+extern int js_extract(const TSTree *tree, const char *source, mcp_file_result *out);
+extern int ruby_extract(const TSTree *tree, const char *source, mcp_file_result *out);
+
+typedef struct {
+    mcp_lang_id   id;
+    const char   *name;
+    const char   *tag;          /* MetaCall loader tag */
+    const char   *extensions[8];
+    const TSLanguage *(*grammar)(void);
+    extract_fn    extract;
+} mcp_lang_def;
+
+static const mcp_lang_def LANGUAGES[] = {
+    { MCP_LANG_PYTHON,     "python",     "py",
+      { "py", NULL },
+      tree_sitter_python,  python_extract },
+    { MCP_LANG_JAVASCRIPT, "javascript", "node",
+      { "js", "mjs", "cjs", "ts", "tsx", "jsx", NULL },
+      tree_sitter_javascript, js_extract },
+    { MCP_LANG_RUBY,       "ruby",       "rb",
+      { "rb", NULL },
+      tree_sitter_ruby,    ruby_extract }
+};
+
+#define LANG_COUNT (sizeof(LANGUAGES) / sizeof(LANGUAGES[0]))
 
 struct mcp_parser_s {
     TSParser *ts_parser;
@@ -49,33 +80,47 @@ mcp_lang_id mcp_lang_from_path(const char *path)
     if (!ext) return MCP_LANG_UNKNOWN;
     ext++;
 
-    if (strcmp(ext, "py") == 0) return MCP_LANG_PYTHON;
-    if (strcmp(ext, "js") == 0 || strcmp(ext, "mjs") == 0 ||
-        strcmp(ext, "cjs") == 0) return MCP_LANG_JAVASCRIPT;
-    if (strcmp(ext, "ts") == 0 || strcmp(ext, "tsx") == 0 ||
-        strcmp(ext, "jsx") == 0) return MCP_LANG_JAVASCRIPT;  /* Use JS parser for TS/JSX */
+    for (size_t i = 0; i < LANG_COUNT; i++) {
+        const mcp_lang_def *lang = &LANGUAGES[i];
+        for (size_t j = 0; lang->extensions[j]; j++) {
+            if (strcmp(ext, lang->extensions[j]) == 0) {
+                return lang->id;
+            }
+        }
+    }
 
     return MCP_LANG_UNKNOWN;
 }
 
 const char *mcp_lang_name(mcp_lang_id lang)
 {
-    switch (lang) {
-        case MCP_LANG_PYTHON:    return "python";
-        case MCP_LANG_JAVASCRIPT: return "javascript";
-        default: return "unknown";
+    for (size_t i = 0; i < LANG_COUNT; i++) {
+        if (LANGUAGES[i].id == lang)
+            return LANGUAGES[i].name;
     }
+    return "unknown";
+}
+
+const char *mcp_lang_tag(mcp_lang_id lang)
+{
+    for (size_t i = 0; i < LANG_COUNT; i++) {
+        if (LANGUAGES[i].id == lang)
+            return LANGUAGES[i].tag;
+    }
+    return "unknown";
 }
 
 /* Set parser language */
 static int parser_set_lang(mcp_parser *parser, mcp_lang_id lang)
 {
     const TSLanguage *ts_lang = NULL;
-    switch (lang) {
-        case MCP_LANG_PYTHON:    ts_lang = tree_sitter_python(); break;
-        case MCP_LANG_JAVASCRIPT: ts_lang = tree_sitter_javascript(); break;
-        default: return -1;
+    for (size_t i = 0; i < LANG_COUNT; i++) {
+        if (LANGUAGES[i].id == lang) {
+            ts_lang = LANGUAGES[i].grammar();
+            break;
+        }
     }
+    if (!ts_lang) return -1;
     return ts_parser_set_language(parser->ts_parser, ts_lang) ? 0 : -1;
 }
 
@@ -105,10 +150,6 @@ static char *read_file(const char *path, size_t *out_len)
     *out_len = n;
     return buf;
 }
-
-/* Forward declarations for extractors */
-extern int python_extract(const TSTree *tree, const char *source, mcp_file_result *out);
-extern int js_extract(const TSTree *tree, const char *source, mcp_file_result *out);
 
 mcp_result *mcp_parser_parse_file(mcp_parser *parser, const char *file_path,
                                    const char *content, size_t content_len)
@@ -157,11 +198,12 @@ mcp_result *mcp_parser_parse_file(mcp_parser *parser, const char *file_path,
     result->file.imports = NULL;
     result->file.import_count = 0;
 
-    int ok = 0;
-    switch (lang) {
-        case MCP_LANG_PYTHON:    ok = python_extract(tree, source, &result->file); break;
-        case MCP_LANG_JAVASCRIPT: ok = js_extract(tree, source, &result->file); break;
-        default: break;
+    int ok = -1;
+    for (size_t i = 0; i < LANG_COUNT; i++) {
+        if (LANGUAGES[i].id == lang) {
+            ok = LANGUAGES[i].extract(tree, source, &result->file);
+            break;
+        }
     }
 
     ts_tree_delete(tree);
@@ -182,6 +224,11 @@ void mcp_result_free(mcp_result *result)
     for (size_t i = 0; i < f->symbol_count; i++) {
         if (f->symbols[i].name) free(f->symbols[i].name);
         if (f->symbols[i].parent_class) free(f->symbols[i].parent_class);
+        if (f->symbols[i].param_names) {
+            for (size_t p = 0; p < f->symbols[i].param_count; p++)
+                free(f->symbols[i].param_names[p]);
+            free(f->symbols[i].param_names);
+        }
     }
     if (f->symbols) free(f->symbols);
     for (size_t i = 0; i < f->import_count; i++) {

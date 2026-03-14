@@ -41,6 +41,9 @@ static int add_symbol(mcp_file_result *out, mcp_symbol_type type, const char *na
     s->line = line;
     s->column = 0;
     s->parent_class = parent_class ? strdup(parent_class) : NULL;
+    s->param_names = NULL;
+    s->param_count = 0;
+    s->is_async = 0;
     out->symbol_count++;
     return 0;
 }
@@ -72,6 +75,19 @@ static void extract_functions_and_classes(TSNode node, const char *source, mcp_f
                                           const char *class_name)
 {
     const char *type = ts_node_type(node);
+
+    /* Handle async function declarations */
+    if (strcmp(type, "async_function_declaration") == 0) {
+        TSNode name_node = ts_node_child_by_field_name(node, "name", 4);
+        if (!ts_node_is_null(name_node)) {
+            char name[256];
+            get_identifier(name_node, source, name, sizeof(name));
+            TSPoint pt = ts_node_start_point(node);
+            if (add_symbol(out, MCP_SYMBOL_FUNCTION, name, pt.row + 1, NULL) == 0)
+                out->symbols[out->symbol_count - 1].is_async = 1;
+        }
+        return;
+    }
 
     if (strcmp(type, "function_declaration") == 0) {
         TSNode name_node = ts_node_child_by_field_name(node, "name", 4);
@@ -153,13 +169,14 @@ static void extract_imports(TSNode node, const char *source, mcp_file_result *ou
     const char *type = ts_node_type(node);
 
     if (strcmp(type, "call_expression") == 0) {
-        /* require("module") */
-        TSNode fn = ts_node_named_child(node, 0);
+        /* require("module") - use "function" field for the callee */
+        TSNode fn = ts_node_child_by_field_name(node, "function", 8);
+        if (ts_node_is_null(fn)) fn = ts_node_named_child(node, 0);
         if (!ts_node_is_null(fn) && strcmp(ts_node_type(fn), "identifier") == 0) {
             char fn_name[64];
             get_node_text(fn, source, fn_name, sizeof(fn_name));
             if (strcmp(fn_name, "require") == 0) {
-                TSNode args = ts_node_child_by_field_name(node, "arguments", 10);
+                TSNode args = ts_node_child_by_field_name(node, "arguments", 9);
                 if (!ts_node_is_null(args)) {
                     TSNode arg = ts_node_named_child(args, 0);
                     if (!ts_node_is_null(arg)) {

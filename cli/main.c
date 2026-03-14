@@ -20,7 +20,7 @@ static void print_usage(const char *prog)
     fprintf(stderr, "  %s list-functions <path>     List functions/classes\n", prog);
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "  --format json|text           Output format (default: json for parse/deps)\n");
+    fprintf(stderr, "  --format json|text|inspect   Output format (default: json for parse/deps)\n");
 }
 
 static void print_result_text(const mcp_result *result)
@@ -34,9 +34,16 @@ static void print_result_text(const mcp_result *result)
     printf("Functions:\n");
     for (size_t i = 0; i < fr->symbol_count; i++) {
         if (fr->symbols[i].type == MCP_SYMBOL_FUNCTION || fr->symbols[i].type == MCP_SYMBOL_METHOD) {
-            printf("  - %s (line %u)%s\n", fr->symbols[i].name,
-                   (unsigned)fr->symbols[i].line,
-                   fr->symbols[i].parent_class ? fr->symbols[i].parent_class : "");
+            if (fr->symbols[i].parent_class) {
+                printf("  - %s (line %u) [%s]\n",
+                       fr->symbols[i].name,
+                       (unsigned)fr->symbols[i].line,
+                       fr->symbols[i].parent_class);
+            } else {
+                printf("  - %s (line %u)\n",
+                       fr->symbols[i].name,
+                       (unsigned)fr->symbols[i].line);
+            }
         }
     }
 
@@ -62,10 +69,12 @@ int main(int argc, char **argv)
 
     const char *cmd = argv[1];
     const char *path = argv[2];
-    int format_json = 1;
+    enum { FORMAT_JSON, FORMAT_TEXT, FORMAT_INSPECT } format = FORMAT_JSON;
     for (int i = 3; i < argc; i++) {
         if (strcmp(argv[i], "--format") == 0 && i + 1 < argc) {
-            format_json = (strcmp(argv[i + 1], "json") == 0);
+            if (strcmp(argv[i + 1], "json") == 0) format = FORMAT_JSON;
+            else if (strcmp(argv[i + 1], "text") == 0) format = FORMAT_TEXT;
+            else if (strcmp(argv[i + 1], "inspect") == 0) format = FORMAT_INSPECT;
             i++;
         }
     }
@@ -84,14 +93,20 @@ int main(int argc, char **argv)
             fprintf(stderr, "Failed to parse %s\n", path);
             ret = 1;
         } else {
-            if (format_json) {
-                char *json = mcp_result_to_json(result);
+            if (format == FORMAT_TEXT) {
+                print_result_text(result);
+            } else if (format == FORMAT_INSPECT) {
+                char *json = mcp_result_to_inspect_json(result);
                 if (json) {
                     printf("%s\n", json);
                     free(json);
                 }
             } else {
-                print_result_text(result);
+                char *json = mcp_result_to_json(result);
+                if (json) {
+                    printf("%s\n", json);
+                    free(json);
+                }
             }
             mcp_result_free(result);
         }

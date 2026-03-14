@@ -1,17 +1,20 @@
-# MCP Prototype — Multi-Language Parser for MetaCall
+# MCP Prototype - Multi-Language Parser for MetaCall
 
 A cross-platform C/C++ tool and library for parsing multi-language projects using [Tree Sitter](https://tree-sitter.github.io/tree-sitter/). Extracts functions, classes, and builds dependency trees without runtime execution.
+
+Owned and maintained by [abhicodes0324](https://github.com/abhicodes0324).
 
 **GSoC Project:** Implement Multi-Language Parser
 
 ## Features
 
-- **Static analysis** — Parse source files without executing code
-- **Multi-language** — Python and JavaScript/TypeScript (extensible)
-- **Symbol extraction** — Functions, classes, and methods
-- **Import/require detection** — Build dependency graphs
-- **C API** — Embeddable in other projects
-- **CLI** — Command-line interface for quick analysis
+- **Static analysis** - Parse source files without executing code
+- **Multi-language** - Python, JavaScript/TypeScript, and Ruby (extensible to more)
+- **Symbol extraction** - Functions, classes, and methods
+- **Import/require detection** - Build dependency graphs
+- **MetaCall inspect format** - Optional output compatible with `metacall_inspect` (per file)
+- **C API** - Embeddable in other projects
+- **CLI** - Command-line interface for quick analysis
 
 ## Build
 
@@ -60,6 +63,9 @@ mcp parse tests/sample.py
 # Parse and show human-readable output
 mcp parse tests/sample.py --format text
 
+# Parse and show MetaCall inspect-compatible JSON
+mcp parse tests/sample.py --format inspect
+
 # List functions and classes
 mcp list-functions tests/sample.js
 
@@ -81,9 +87,20 @@ int main(void) {
     if (result) {
         const mcp_file_result *fr = mcp_result_get_file(result);
         for (size_t i = 0; i < fr->symbol_count; i++) {
-            printf("%s: %s (line %u)\n",
-                   fr->symbols[i].type == MCP_SYMBOL_FUNCTION ? "function" : "class",
-                   fr->symbols[i].name, fr->symbols[i].line);
+            const mcp_symbol *s = &fr->symbols[i];
+            if (s->type == MCP_SYMBOL_FUNCTION || s->type == MCP_SYMBOL_METHOD) {
+                printf("%s%s: %s(",
+                       s->is_async ? "async " : "",
+                       s->type == MCP_SYMBOL_METHOD ? "method" : "function",
+                       s->name);
+                for (size_t p = 0; p < s->param_count; p++) {
+                    if (p > 0) printf(", ");
+                    printf("%s", s->param_names[p]);
+                }
+                printf(") [line %u]\n", s->line);
+            } else if (s->type == MCP_SYMBOL_CLASS) {
+                printf("class: %s [line %u]\n", s->name, s->line);
+            }
         }
         mcp_result_free(result);
     }
@@ -102,12 +119,22 @@ int main(void) {
   "file": "sample.py",
   "language": "python",
   "functions": [
-    {"name": "greet", "line": 6},
-    {"name": "add", "line": 10}
+    {
+      "name": "greet",
+      "line": 7,
+      "async": false,
+      "params": [{ "name": "name" }]
+    },
+    {
+      "name": "add",
+      "line": 11,
+      "async": false,
+      "params": [{ "name": "a" }, { "name": "b" }]
+    }
   ],
   "classes": [
-    {"name": "Calculator", "line": 13},
-    {"name": "DataProcessor", "line": 20}
+    { "name": "Calculator", "line": 14 },
+    { "name": "DataProcessor", "line": 21 }
   ],
   "imports": [
     {"module": "os"},
@@ -131,6 +158,70 @@ int main(void) {
 }
 ```
 
+## Sample Output
+
+### Python — JSON and Text
+
+```bash
+$ mcp parse tests/sample.py
+{"file":"tests/sample.py","language":"python","functions":[{"name":"greet","line":7,"async":false,"params":[{"name":"name"}]},{"name":"add","line":11,"async":false,"params":[{"name":"a"},{"name":"b"}]},{"name":"add","line":15,"async":false,"params":[{"name":"x"},{"name":"y"}]},{"name":"multiply","line":18,"async":false,"params":[{"name":"x"},{"name":"y"}]},{"name":"process","line":22,"async":false,"params":[{"name":"data"}]}],"classes":[{"name":"Calculator","line":14},{"name":"DataProcessor","line":21}],"imports":[{"module":"utils"}]}
+
+$ mcp parse tests/sample.py --format text
+File: tests/sample.py
+Language: python
+
+Functions:
+  - greet (line 7)
+  - add (line 11)
+  - add (line 15) [Calculator]
+  - multiply (line 18) [Calculator]
+  - process (line 22) [DataProcessor]
+
+Classes:
+  - Calculator (line 14)
+  - DataProcessor (line 21)
+
+Imports:
+  - utils
+```
+
+### Python — MetaCall Inspect Format
+
+```bash
+$ mcp parse tests/sample.py --format inspect
+{"py":[{"name":"tests/sample.py","scope":{"name":"sample","funcs":[{"name":"greet","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"name","type":"Unknown"}]}},{"name":"add","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"a","type":"Unknown"},{"name":"b","type":"Unknown"}]}},{"name":"add","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"x","type":"Unknown"},{"name":"y","type":"Unknown"}]}},{"name":"multiply","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"x","type":"Unknown"},{"name":"y","type":"Unknown"}]}},{"name":"process","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"data","type":"Unknown"}]}}],"classes":[{"name":"Calculator"},{"name":"DataProcessor"}],"objects":[]}}]}
+```
+
+### JavaScript — Functions and Imports
+
+```bash
+$ mcp list-functions tests/sample.js
+File: tests/sample.js
+Language: javascript
+
+Functions:
+  - greet (line 6)
+  - multiply (line 14)
+  - add (line 17) [Calculator]
+  - multiply (line 21) [Calculator]
+  - process (line 27) [DataProcessor]
+
+Classes:
+  - Calculator (line 16)
+  - DataProcessor (line 26)
+
+Imports:
+  - fs
+  - ./utils
+```
+
+### Cross-Language Dependency Graph
+
+```bash
+$ mcp deps tests/
+{"nodes":[{"id":"tests/utils.py","path":"tests/utils.py","symbols":[{"name":"helper","type":"function","line":3}]},{"id":"tests/sample.py","path":"tests/sample.py","symbols":[{"name":"greet","type":"function","line":7},{"name":"add","type":"function","line":11},{"name":"Calculator","type":"class","line":14},{"name":"add","type":"method","line":15},{"name":"multiply","type":"method","line":18},{"name":"DataProcessor","type":"class","line":21},{"name":"process","type":"method","line":22}]},{"id":"tests/utils.js","path":"tests/utils.js","symbols":[{"name":"helper","type":"function","line":3}]},{"id":"tests/sample.js","path":"tests/sample.js","symbols":[{"name":"greet","type":"function","line":6},{"name":"multiply","type":"function","line":14},{"name":"Calculator","type":"class","line":16},{"name":"add","type":"method","line":17},{"name":"multiply","type":"method","line":21},{"name":"DataProcessor","type":"class","line":26},{"name":"process","type":"method","line":27}]}],"edges":[{"from":"tests/sample.py","to":"tests/utils.py"},{"from":"tests/sample.js","to":"tests/utils.js"}]}
+```
+
 ## Project Structure
 
 ```
@@ -143,16 +234,33 @@ mcp-prototype/
 │   ├── dependency_builder.c
 │   └── extractors/
 │       ├── python_extractor.c
-│       └── js_extractor.c
+│       ├── js_extractor.c
+│       └── ruby_extractor.c
 ├── cli/
 │   └── main.c
 ├── tests/
 │   ├── sample.py
 │   ├── sample.js
 │   ├── utils.py
-│   └── utils.js
+│   ├── utils.js
+│   └── sample.rb
 └── CMakeLists.txt
 ```
+
+## Testing
+
+From the project root:
+
+```bash
+./tests/run_tests.sh ./build/mcp
+```
+
+This runs basic checks for:
+
+- Python symbol extraction (functions, classes)
+- JavaScript symbol extraction
+- Ruby parse smoke test (if `tests/sample.rb` is present)
+- Dependency edges between `sample.py` → `utils.py` and `sample.js` → `utils.js`
 
 ## Extending to New Languages
 
@@ -163,14 +271,10 @@ mcp-prototype/
 
 ## Use Cases
 
-- **Intellisense** — Feed parsed symbols to IDE plugins (e.g., VS Code)
-- **Function Mesh** — Break multi-language projects into distributable subparts
-- **Documentation** — Generate API docs from static analysis
-- **Refactoring** — Understand cross-file dependencies
-
-## License
-
-Apache 2.0
+- **Intellisense** - Feed parsed symbols to IDE plugins (e.g., VS Code)
+- **Function Mesh** - Break multi-language projects into distributable subparts
+- **Documentation** - Generate API docs from static analysis
+- **Refactoring** - Understand cross-file dependencies
 
 ## Resources
 

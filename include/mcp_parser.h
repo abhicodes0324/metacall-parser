@@ -27,6 +27,7 @@ typedef enum {
     MCP_LANG_UNKNOWN = 0,
     MCP_LANG_PYTHON,
     MCP_LANG_JAVASCRIPT,
+    MCP_LANG_RUBY,
 } mcp_lang_id;
 
 /* Symbol types */
@@ -43,6 +44,9 @@ typedef struct {
     uint32_t line;
     uint32_t column;
     char *parent_class;  /* For methods: containing class name; NULL otherwise */
+    char **param_names;  /* Parameter names (for functions/methods); NULL if none */
+    size_t param_count;  /* Number of parameters */
+    int is_async;        /* 1 if async def / async function, 0 otherwise */
 } mcp_symbol;
 
 /* Import/dependency */
@@ -141,6 +145,22 @@ mcp_lang_id mcp_lang_from_path(const char *path);
  * Get language name for display.
  */
 const char *mcp_lang_name(mcp_lang_id lang);
+
+/**
+ * Get library version string.
+ */
+const char *mcp_parser_version(void);
+
+/**
+ * Get MetaCall loader tag for a language (e.g., "py", "node", "rb").
+ */
+const char *mcp_lang_tag(mcp_lang_id lang);
+
+/**
+ * Export parse result as JSON string in a MetaCall inspect-compatible format.
+ * Caller must free the returned string.
+ */
+char *mcp_result_to_inspect_json(const mcp_result *result);
 
 #ifdef __cplusplus
 }

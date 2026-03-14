@@ -35,5 +35,6 @@ fetch() {
 fetch "tree-sitter" "tree-sitter/tree-sitter"
 fetch "tree-sitter-python" "tree-sitter/tree-sitter-python"
 fetch "tree-sitter-javascript" "tree-sitter/tree-sitter-javascript"
+fetch "tree-sitter-ruby" "tree-sitter/tree-sitter-ruby"
 
 echo "Done. Run: mkdir -p build && cd build && cmake .. && cmake --build ."

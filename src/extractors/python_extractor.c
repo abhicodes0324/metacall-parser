@@ -39,8 +39,11 @@ static int add_symbol(mcp_file_result *out, mcp_symbol_type type, const char *na
     s->type = type;
     s->name = strdup(name);
     s->line = line;
-    s->column = 0; /* Placeholder */
+    s->column = 0;
     s->parent_class = parent_class ? strdup(parent_class) : NULL;
+    s->param_names = NULL;
+    s->param_count = 0;
+    s->is_async = 0;
     out->symbol_count++;
     return 0;
 }
@@ -74,19 +77,81 @@ static TSNode find_name_node(TSNode parent, const char *source)
     return (TSNode){0};
 }
 
+/* Extract parameter names from Python parameters node */
+static void extract_python_params(TSNode params_node, const char *source,
+                                  char ***out_names, size_t *out_count)
+{
+    *out_names = NULL;
+    *out_count = 0;
+    if (ts_node_is_null(params_node)) return;
+
+    uint32_t pn = ts_node_child_count(params_node);
+    char **param_names = malloc(pn * sizeof(char *));
+    if (!param_names) return;
+
+    size_t param_count = 0;
+    for (uint32_t pi = 0; pi < pn; pi++) {
+        TSNode p = ts_node_child(params_node, pi);
+        const char *pt_type = ts_node_type(p);
+        char pname[128];
+
+        if (strcmp(pt_type, "identifier") == 0) {
+            get_node_text(p, source, pname, sizeof(pname));
+            if (strcmp(pname, "self") != 0 && strcmp(pname, "cls") != 0) {
+                param_names[param_count] = strdup(pname);
+                if (param_names[param_count]) param_count++;
+            }
+        } else if (strcmp(pt_type, "typed_parameter") == 0) {
+            TSNode pid = ts_node_child_by_field_name(p, "name", 4);
+            if (ts_node_is_null(pid)) pid = ts_node_child(p, 0);
+            if (!ts_node_is_null(pid)) {
+                get_node_text(pid, source, pname, sizeof(pname));
+                if (strcmp(pname, "self") != 0 && strcmp(pname, "cls") != 0) {
+                    param_names[param_count] = strdup(pname);
+                    if (param_names[param_count]) param_count++;
+                }
+            }
+        }
+    }
+    *out_names = param_count > 0 ? param_names : (free(param_names), NULL);
+    *out_count = param_count;
+}
+
 static void extract_functions_and_classes(TSNode node, const char *source, mcp_file_result *out,
                                           const char *class_name)
 {
     const char *type = ts_node_type(node);
 
-    if (strcmp(type, "function_definition") == 0) {
+    if (strcmp(type, "async_function_definition") == 0 ||
+        strcmp(type, "function_definition") == 0) {
+        int is_async = (strcmp(type, "async_function_definition") == 0);
         TSNode name_node = ts_node_child_by_field_name(node, "name", 4);
         if (!ts_node_is_null(name_node)) {
             char name[256];
             get_node_text(name_node, source, name, sizeof(name));
             TSPoint pt = ts_node_start_point(node);
-            add_symbol(out, class_name ? MCP_SYMBOL_METHOD : MCP_SYMBOL_FUNCTION,
-                      name, pt.row + 1, class_name);
+            if (add_symbol(out, class_name ? MCP_SYMBOL_METHOD : MCP_SYMBOL_FUNCTION,
+                          name, pt.row + 1, class_name) == 0) {
+                mcp_symbol *s = &out->symbols[out->symbol_count - 1];
+                s->is_async = is_async;
+                TSNode params = ts_node_child_by_field_name(node, "parameters", 10);
+                extract_python_params(params, source, &s->param_names, &s->param_count);
+            }
+        }
+        return;
+    }
+
+    /* decorated_definition wraps async/regular function (e.g. @decorator above def) */
+    if (strcmp(type, "decorated_definition") == 0) {
+        uint32_t nc = ts_node_child_count(node);
+        for (uint32_t i = 0; i < nc; i++) {
+            TSNode child = ts_node_child(node, i);
+            const char *ct = ts_node_type(child);
+            if (strcmp(ct, "async_function_definition") == 0 ||
+                strcmp(ct, "function_definition") == 0) {
+                extract_functions_and_classes(child, source, out, class_name);
+                break;
+            }
         }
         return;
     }

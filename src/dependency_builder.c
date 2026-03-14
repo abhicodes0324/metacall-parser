@@ -64,6 +64,17 @@ static mcp_file_result *copy_file_result(const mcp_file_result *src)
                 dst->symbols[i] = src->symbols[i];
                 dst->symbols[i].name = src->symbols[i].name ? strdup(src->symbols[i].name) : NULL;
                 dst->symbols[i].parent_class = src->symbols[i].parent_class ? strdup(src->symbols[i].parent_class) : NULL;
+                dst->symbols[i].param_names = NULL;
+                dst->symbols[i].param_count = 0;
+                if (src->symbols[i].param_count > 0 && src->symbols[i].param_names) {
+                    dst->symbols[i].param_names = malloc(src->symbols[i].param_count * sizeof(char *));
+                    if (dst->symbols[i].param_names) {
+                        for (size_t p = 0; p < src->symbols[i].param_count; p++)
+                            dst->symbols[i].param_names[p] = src->symbols[i].param_names[p]
+                                ? strdup(src->symbols[i].param_names[p]) : NULL;
+                        dst->symbols[i].param_count = src->symbols[i].param_count;
+                    }
+                }
             }
             dst->symbol_count = src->symbol_count;
         }
@@ -92,6 +103,11 @@ static void free_file_result(mcp_file_result *f)
         for (size_t i = 0; i < f->symbol_count; i++) {
             free(f->symbols[i].name);
             free(f->symbols[i].parent_class);
+            if (f->symbols[i].param_names) {
+                for (size_t p = 0; p < f->symbols[i].param_count; p++)
+                    free(f->symbols[i].param_names[p]);
+                free(f->symbols[i].param_names);
+            }
         }
         free(f->symbols);
     }
@@ -116,51 +132,118 @@ static int add_edge(mcp_dep_graph *graph, const char *from, const char *to, cons
     return 0;
 }
 
-/* Resolve import to file path - returns 1 if found in nodes */
-static int resolve_import_to_node(const char *dir_path, const char *import_spec,
+/* Compare two paths, treating multiple slashes as one */
+static int path_eq(const char *a, const char *b)
+{
+    while (*a && *b) {
+        if (*a == '/') {
+            if (*b != '/') return 0;
+            while (*a == '/') a++;
+            while (*b == '/') b++;
+        } else if (*b == '/') {
+            return 0;
+        } else if (*a != *b) {
+            return 0;
+        } else {
+            a++;
+            b++;
+        }
+    }
+    return (*a == '\0' && *b == '\0');
+}
+
+/* Resolve import to file path - returns 1 if found in nodes.
+ * from_file: full path of the file doing the import (e.g. tests/sample.js)
+ * import_spec: the import string (e.g. "./utils", "utils", "../foo")
+ */
+static int resolve_import_to_node(const char *from_file, const char *import_spec,
                                    mcp_lang_id lang, struct dep_node *nodes, size_t node_count,
                                    char *out_path, size_t out_size)
 {
-    char base_dir[PATH_MAX];
-    strncpy(base_dir, dir_path, sizeof(base_dir) - 1);
-    base_dir[sizeof(base_dir) - 1] = '\0';
-    char *last_slash = strrchr(base_dir, '/');
-    if (last_slash) *last_slash = '\0';
-
-    /* Try: dir/import.py or dir/import.js, dir/import/__init__.py */
-    char candidate[PATH_MAX];
-    if (import_spec[0] == '.' || import_spec[0] == '/') {
-        snprintf(candidate, sizeof(candidate), "%s/%s", base_dir, import_spec);
-    } else {
-        snprintf(candidate, sizeof(candidate), "%s/%s", base_dir, import_spec);
+    /* Get directory of the importing file */
+    char from_dir[PATH_MAX];
+    strncpy(from_dir, from_file, sizeof(from_dir) - 1);
+    from_dir[sizeof(from_dir) - 1] = '\0';
+    char *last_slash = strrchr(from_dir, '/');
+#ifdef _WIN32
+    {
+        char *bs = strrchr(from_dir, '\\');
+        if (bs && (!last_slash || bs > last_slash)) last_slash = bs;
     }
+#endif
+    if (last_slash)
+        *last_slash = '\0';
+    else
+        strncpy(from_dir, ".", sizeof(from_dir) - 1);
 
-    /* Try .py / .js extensions */
+    /* Build candidate path from importing file's directory.
+     * Normalize: strip leading ./ from import_spec for cleaner path */
+    char import_normalized[PATH_MAX];
+    const char *imp = import_spec;
+    while (imp[0] == '.' && imp[1] == '/') imp += 2;
+    strncpy(import_normalized, imp, sizeof(import_normalized) - 1);
+    import_normalized[sizeof(import_normalized) - 1] = '\0';
+
+    char candidate[PATH_MAX];
+    snprintf(candidate, sizeof(candidate), "%s/%s", from_dir, import_normalized);
+
+    /* Add extension if missing - prefer extension matching importing file's language */
     const char *ext = strrchr(candidate, '.');
-    if (!ext || (strcmp(ext, ".py") != 0 && strcmp(ext, ".js") != 0)) {
-        if (lang == MCP_LANG_PYTHON) {
-            strcat(candidate, ".py");
-        } else {
-            strcat(candidate, ".js");
+    if (!ext || (strcmp(ext, ".py") != 0 && strcmp(ext, ".js") != 0 && strcmp(ext, ".ts") != 0 &&
+                 strcmp(ext, ".tsx") != 0 && strcmp(ext, ".jsx") != 0)) {
+        const char *prefer = (lang == MCP_LANG_PYTHON) ? ".py" : ".js";
+        const char *try_exts[] = {".py", ".js", ".ts", NULL};
+        /* Try preferred extension first */
+        for (int round = 0; round < 2; round++) {
+            for (int e = 0; try_exts[e]; e++) {
+                if (round == 0 && strcmp(try_exts[e], prefer) != 0) continue;
+                if (round == 1 && strcmp(try_exts[e], prefer) == 0) continue;
+                char with_ext[PATH_MAX];
+                snprintf(with_ext, sizeof(with_ext), "%s%s", candidate, try_exts[e]);
+                for (size_t i = 0; i < node_count; i++) {
+                    if (path_eq(nodes[i].path, with_ext)) {
+                        strncpy(out_path, nodes[i].path, out_size - 1);
+                        out_path[out_size - 1] = '\0';
+                        return 1;
+                    }
+                }
+            }
         }
     }
 
+    /* Exact match on candidate */
     for (size_t i = 0; i < node_count; i++) {
-        if (strstr(nodes[i].path, import_spec) != NULL ||
-            strcmp(nodes[i].path, candidate) == 0) {
+        if (path_eq(nodes[i].path, candidate)) {
             strncpy(out_path, nodes[i].path, out_size - 1);
             out_path[out_size - 1] = '\0';
             return 1;
         }
     }
 
-    /* Try without extension - match by base name */
+    /* Match by basename (stem) - strip extension from both */
+    const char *imp_base = strrchr(import_normalized, '/');
+    imp_base = imp_base ? imp_base + 1 : import_normalized;
+    char imp_stem[256];
+    strncpy(imp_stem, imp_base, sizeof(imp_stem) - 1);
+    imp_stem[sizeof(imp_stem) - 1] = '\0';
+    char *dot = strrchr(imp_stem, '.');
+    if (dot) *dot = '\0';
+
     for (size_t i = 0; i < node_count; i++) {
         const char *fname = strrchr(nodes[i].path, '/');
+#ifdef _WIN32
+        {
+            const char *bs = strrchr(nodes[i].path, '\\');
+            if (bs && (!fname || bs > fname)) fname = bs;
+        }
+#endif
         fname = fname ? fname + 1 : nodes[i].path;
-        const char *imp_base = strrchr(import_spec, '/');
-        imp_base = imp_base ? imp_base + 1 : import_spec;
-        if (strcmp(fname, imp_base) == 0) {
+        char fstem[256];
+        strncpy(fstem, fname, sizeof(fstem) - 1);
+        fstem[sizeof(fstem) - 1] = '\0';
+        char *fdot = strrchr(fstem, '.');
+        if (fdot) *fdot = '\0';
+        if (strcmp(fstem, imp_stem) == 0) {
             strncpy(out_path, nodes[i].path, out_size - 1);
             out_path[out_size - 1] = '\0';
             return 1;
@@ -205,12 +288,20 @@ mcp_dep_graph *mcp_parser_build_deps(mcp_parser *parser, const char *dir_path, i
 {
     if (!parser || !dir_path) return NULL;
 
+    /* Normalize directory path (strip trailing slash) */
+    char base_dir[PATH_MAX];
+    strncpy(base_dir, dir_path, sizeof(base_dir) - 1);
+    base_dir[sizeof(base_dir) - 1] = '\0';
+    size_t dlen = strlen(base_dir);
+    if (dlen > 1 && base_dir[dlen - 1] == '/')
+        base_dir[dlen - 1] = '\0';
+
     char *paths[MAX_FILES];
     size_t path_count = 0;
     memset(paths, 0, sizeof(paths));
 
 #ifndef _WIN32
-    scan_dir_recursive(dir_path, recursive ? 1 : 0, paths, &path_count);
+    scan_dir_recursive(base_dir, recursive ? 1 : 0, paths, &path_count);
 #else
     (void)recursive;
     /* Windows: minimal - just try dir_path if it's a file */
@@ -264,7 +355,7 @@ mcp_dep_graph *mcp_parser_build_deps(mcp_parser *parser, const char *dir_path, i
             if (!mod || mod[0] == '\0') continue;
 
             char resolved[PATH_MAX];
-            if (resolve_import_to_node(dir_path, mod, copy->language,
+            if (resolve_import_to_node(paths[i], mod, copy->language,
                                        graph->nodes, graph->node_count,
                                        resolved, sizeof(resolved))) {
                 add_edge(graph, paths[i], resolved, mod);

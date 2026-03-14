@@ -13,6 +13,7 @@ endif()
 set(TS_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/tree-sitter)
 set(TS_PYTHON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/tree-sitter-python)
 set(TS_JS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/tree-sitter-javascript)
+set(TS_RUBY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/tree-sitter-ruby)
 
 if(NOT EXISTS ${TS_CORE_DIR}/lib/src/lib.c)
   message(FATAL_ERROR "Tree Sitter not found. Run: ./scripts/fetch-deps.sh")
@@ -61,11 +62,23 @@ target_include_directories(tree-sitter-javascript-lib PUBLIC
   ${TS_JS_DIR}/src
 )
 
+# Tree-sitter Ruby
+set(TS_RUBY_SRCS ${TS_RUBY_DIR}/src/parser.c)
+if(EXISTS ${TS_RUBY_DIR}/src/scanner.c)
+  list(APPEND TS_RUBY_SRCS ${TS_RUBY_DIR}/src/scanner.c)
+endif()
+add_library(tree-sitter-ruby-lib STATIC ${TS_RUBY_SRCS})
+target_include_directories(tree-sitter-ruby-lib PUBLIC
+  ${TS_CORE_DIR}/lib/include
+  ${TS_RUBY_DIR}/src
+)
+
 # MCP Parser library
 add_library(mcp_parser STATIC
   src/parser.c
   src/extractors/python_extractor.c
   src/extractors/js_extractor.c
+  src/extractors/ruby_extractor.c
   src/dependency_builder.c
   src/api.c
 )
@@ -75,12 +88,14 @@ target_include_directories(mcp_parser PUBLIC
   ${TS_CORE_DIR}/lib/include
   ${TS_PYTHON_DIR}/src
   ${TS_JS_DIR}/src
+  ${TS_RUBY_DIR}/src
 )
 
 target_link_libraries(mcp_parser PRIVATE
   tree-sitter-lib
   tree-sitter-python-lib
   tree-sitter-javascript-lib
+  tree-sitter-ruby-lib
 )
 
 # CLI executable
