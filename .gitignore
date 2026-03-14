@@ -1,0 +1,7 @@
+build/
+vendor/
+*.o
+*.a
+*.dylib
+*.so
+.DS_Store
