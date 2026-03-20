@@ -50,27 +50,27 @@ cmake --build build --target install
 # Add to PATH if needed: export PATH="$HOME/.local/bin:$PATH"
 ```
 
-After install, the `mcp` binary is available in your PATH. To run without installing, use `./build/mcp` from the project root (paths are relative to your current directory).
+After install, the `metacall-parser` binary is available in your PATH. To run without installing, use `./build/metacall-parser` from the project root (paths are relative to your current directory).
 
 ## Usage
 
 ### CLI
 
 ```bash
-# From project root (after install, or use ./build/mcp without install)
-mcp parse tests/sample.py
+# From project root (after install, or use ./build/metacall-parser without install)
+metacall-parser parse tests/sample.py
 
 # Parse and show human-readable output
-mcp parse tests/sample.py --format text
+metacall-parser parse tests/sample.py --format text
 
 # Parse and show MetaCall inspect-compatible JSON
-mcp parse tests/sample.py --format inspect
+metacall-parser parse tests/sample.py --format inspect
 
 # List functions and classes
-mcp list-functions tests/sample.js
+metacall-parser list-functions tests/sample.js
 
 # Build dependency graph for a directory
-mcp deps tests/
+metacall-parser deps tests/
 ```
 
 When running from the `build/` directory, use relative paths like `../tests/sample.py`.
@@ -163,10 +163,10 @@ int main(void) {
 ### Python — JSON and Text
 
 ```bash
-$ mcp parse tests/sample.py
+$ metacall-parser parse tests/sample.py
 {"file":"tests/sample.py","language":"python","functions":[{"name":"greet","line":7,"async":false,"params":[{"name":"name"}]},{"name":"add","line":11,"async":false,"params":[{"name":"a"},{"name":"b"}]},{"name":"add","line":15,"async":false,"params":[{"name":"x"},{"name":"y"}]},{"name":"multiply","line":18,"async":false,"params":[{"name":"x"},{"name":"y"}]},{"name":"process","line":22,"async":false,"params":[{"name":"data"}]}],"classes":[{"name":"Calculator","line":14},{"name":"DataProcessor","line":21}],"imports":[{"module":"utils"}]}
 
-$ mcp parse tests/sample.py --format text
+$ metacall-parser parse tests/sample.py --format text
 File: tests/sample.py
 Language: python
 
@@ -188,14 +188,14 @@ Imports:
 ### Python — MetaCall Inspect Format
 
 ```bash
-$ mcp parse tests/sample.py --format inspect
+$ metacall-parser parse tests/sample.py --format inspect
 {"py":[{"name":"tests/sample.py","scope":{"name":"sample","funcs":[{"name":"greet","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"name","type":"Unknown"}]}},{"name":"add","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"a","type":"Unknown"},{"name":"b","type":"Unknown"}]}},{"name":"add","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"x","type":"Unknown"},{"name":"y","type":"Unknown"}]}},{"name":"multiply","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"x","type":"Unknown"},{"name":"y","type":"Unknown"}]}},{"name":"process","async":false,"signature":{"ret":{"type":"Unknown"},"args":[{"name":"data","type":"Unknown"}]}}],"classes":[{"name":"Calculator"},{"name":"DataProcessor"}],"objects":[]}}]}
 ```
 
 ### JavaScript — Functions and Imports
 
 ```bash
-$ mcp list-functions tests/sample.js
+$ metacall-parser list-functions tests/sample.js
 File: tests/sample.js
 Language: javascript
 
@@ -218,7 +218,7 @@ Imports:
 ### Cross-Language Dependency Graph
 
 ```bash
-$ mcp deps tests/
+$ metacall-parser deps tests/
 {"nodes":[{"id":"tests/utils.py","path":"tests/utils.py","symbols":[{"name":"helper","type":"function","line":3}]},{"id":"tests/sample.py","path":"tests/sample.py","symbols":[{"name":"greet","type":"function","line":7},{"name":"add","type":"function","line":11},{"name":"Calculator","type":"class","line":14},{"name":"add","type":"method","line":15},{"name":"multiply","type":"method","line":18},{"name":"DataProcessor","type":"class","line":21},{"name":"process","type":"method","line":22}]},{"id":"tests/utils.js","path":"tests/utils.js","symbols":[{"name":"helper","type":"function","line":3}]},{"id":"tests/sample.js","path":"tests/sample.js","symbols":[{"name":"greet","type":"function","line":6},{"name":"multiply","type":"function","line":14},{"name":"Calculator","type":"class","line":16},{"name":"add","type":"method","line":17},{"name":"multiply","type":"method","line":21},{"name":"DataProcessor","type":"class","line":26},{"name":"process","type":"method","line":27}]}],"edges":[{"from":"tests/sample.py","to":"tests/utils.py"},{"from":"tests/sample.js","to":"tests/utils.js"}]}
 ```
 
@@ -252,22 +252,26 @@ mcp-prototype/
 From the project root:
 
 ```bash
-./tests/run_tests.sh ./build/mcp
+./tests/run_tests.sh ./build/metacall-parser
 ```
 
-This runs basic checks for:
+The test suite covers:
 
-- Python symbol extraction (functions, classes)
-- JavaScript symbol extraction
-- Ruby parse smoke test (if `tests/sample.rb` is present)
-- Dependency edges between `sample.py` → `utils.py` and `sample.js` → `utils.js`
+- **Python** — symbol extraction (functions, classes, methods), import detection
+- **JavaScript** — symbol extraction, relative imports (`./utils`)
+- **Ruby** — symbol extraction, `require_relative` detection
+- **Dependency graph** — edges `sample.py` → `utils.py`, `sample.js` → `utils.js`, `sample.rb` → `utils.rb`
+- **CLI** — `--format text`, `--format inspect`
 
 ## Extending to New Languages
 
+The parser is designed for easy extension. MetaCall supports Python, JavaScript, TypeScript, Ruby, C#, Go, Java, Rust, C, and more. To add a new language:
+
 1. Add Tree Sitter grammar as FetchContent dependency
 2. Create `src/extractors/<lang>_extractor.c` implementing extraction logic
-3. Register in `mcp_lang_from_path()` and `parser.c`
-4. Add query/traversal for function, class, and import nodes
+3. Register in `mcp_lang_from_path()` and the `LANGUAGES[]` table in `parser.c`
+4. Add the file extension to `is_source_file()` in `dependency_builder.c` so `metacall-parser deps` includes it
+5. Add query/traversal for function, class, and import nodes
 
 ## Use Cases
 

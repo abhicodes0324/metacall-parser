@@ -2,9 +2,9 @@
  * MCP CLI - Multi-Language Parser command-line interface
  *
  * Usage:
- *   mcp parse <file>           - Parse file and list functions/classes/imports
- *   mcp deps <directory>       - Build dependency graph for directory
- *   mcp list-functions <path>  - List all functions (file or directory)
+ *   metacall-parser parse <file>           - Parse file and list functions/classes/imports
+ *   metacall-parser deps <directory>       - Build dependency graph for directory
+ *   metacall-parser list-functions <path>  - List all functions (file or directory)
  */
 
 #include "mcp_parser.h"

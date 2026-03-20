@@ -10,11 +10,15 @@
 #ifndef _WIN32
 #include <dirent.h>
 #include <sys/stat.h>
+#else
+#include <windows.h>
 #endif
 
 #define MAX_FILES 1024
 #define MAX_EDGES 2048
+#ifndef PATH_MAX
 #define PATH_MAX 4096
+#endif
 
 struct dep_node {
     char *path;
@@ -42,6 +46,7 @@ static int is_source_file(const char *path)
     if (strcmp(ext, "py") == 0) return 1;
     if (strcmp(ext, "js") == 0 || strcmp(ext, "mjs") == 0 || strcmp(ext, "cjs") == 0) return 1;
     if (strcmp(ext, "ts") == 0 || strcmp(ext, "tsx") == 0 || strcmp(ext, "jsx") == 0) return 1;
+    if (strcmp(ext, "rb") == 0) return 1;
     return 0;
 }
 
@@ -123,7 +128,14 @@ static void free_file_result(mcp_file_result *f)
 
 static int add_edge(mcp_dep_graph *graph, const char *from, const char *to, const char *import_spec)
 {
-    if (graph->edge_count >= MAX_EDGES) return -1;
+    if (graph->edge_count >= MAX_EDGES) {
+        static int warned;
+        if (!warned) {
+            fprintf(stderr, "mcp: warning: dependency edge limit (%d) reached, some edges may be missing\n", MAX_EDGES);
+            warned = 1;
+        }
+        return -1;
+    }
     struct dep_edge *e = &graph->edges[graph->edge_count];
     e->from = strdup(from);
     e->to = strdup(to);
@@ -190,9 +202,9 @@ static int resolve_import_to_node(const char *from_file, const char *import_spec
     /* Add extension if missing - prefer extension matching importing file's language */
     const char *ext = strrchr(candidate, '.');
     if (!ext || (strcmp(ext, ".py") != 0 && strcmp(ext, ".js") != 0 && strcmp(ext, ".ts") != 0 &&
-                 strcmp(ext, ".tsx") != 0 && strcmp(ext, ".jsx") != 0)) {
-        const char *prefer = (lang == MCP_LANG_PYTHON) ? ".py" : ".js";
-        const char *try_exts[] = {".py", ".js", ".ts", NULL};
+                 strcmp(ext, ".tsx") != 0 && strcmp(ext, ".jsx") != 0 && strcmp(ext, ".rb") != 0)) {
+        const char *prefer = (lang == MCP_LANG_PYTHON) ? ".py" : (lang == MCP_LANG_RUBY) ? ".rb" : ".js";
+        const char *try_exts[] = {".py", ".js", ".ts", ".rb", NULL};
         /* Try preferred extension first */
         for (int round = 0; round < 2; round++) {
             for (int e = 0; try_exts[e]; e++) {
@@ -262,7 +274,11 @@ static void scan_dir_recursive(const char *dir_path, int recursive,
     char subpath[PATH_MAX];
     struct dirent *ent;
 
-    while ((ent = readdir(d)) != NULL && *out_count < MAX_FILES) {
+    while ((ent = readdir(d)) != NULL) {
+        if (*out_count >= MAX_FILES) {
+            fprintf(stderr, "mcp: warning: file limit (%d) reached, some files may be omitted\n", MAX_FILES);
+            break;
+        }
         if (ent->d_name[0] == '.') continue;
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
 
@@ -282,6 +298,39 @@ static void scan_dir_recursive(const char *dir_path, int recursive,
     }
     closedir(d);
 }
+#else
+static void scan_dir_recursive_win(const char *dir_path, int recursive,
+                                    char **out_paths, size_t *out_count)
+{
+    char pattern[PATH_MAX];
+    snprintf(pattern, sizeof(pattern), "%s\\*", dir_path);
+
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+
+    do {
+        if (*out_count >= MAX_FILES) {
+            fprintf(stderr, "mcp: warning: file limit (%d) reached, some files may be omitted\n", MAX_FILES);
+            break;
+        }
+        if (fd.cFileName[0] == '.') continue;
+        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) continue;
+
+        char subpath[PATH_MAX];
+        snprintf(subpath, sizeof(subpath), "%s\\%s", dir_path, fd.cFileName);
+
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            if (recursive)
+                scan_dir_recursive_win(subpath, 1, out_paths, out_count);
+        } else if (is_source_file(fd.cFileName)) {
+            out_paths[*out_count] = strdup(subpath);
+            if (out_paths[*out_count]) (*out_count)++;
+        }
+    } while (FindNextFileA(h, &fd));
+
+    FindClose(h);
+}
 #endif
 
 mcp_dep_graph *mcp_parser_build_deps(mcp_parser *parser, const char *dir_path, int recursive)
@@ -293,7 +342,7 @@ mcp_dep_graph *mcp_parser_build_deps(mcp_parser *parser, const char *dir_path, i
     strncpy(base_dir, dir_path, sizeof(base_dir) - 1);
     base_dir[sizeof(base_dir) - 1] = '\0';
     size_t dlen = strlen(base_dir);
-    if (dlen > 1 && base_dir[dlen - 1] == '/')
+    if (dlen > 1 && (base_dir[dlen - 1] == '/' || base_dir[dlen - 1] == '\\'))
         base_dir[dlen - 1] = '\0';
 
     char *paths[MAX_FILES];
@@ -303,11 +352,15 @@ mcp_dep_graph *mcp_parser_build_deps(mcp_parser *parser, const char *dir_path, i
 #ifndef _WIN32
     scan_dir_recursive(base_dir, recursive ? 1 : 0, paths, &path_count);
 #else
-    (void)recursive;
-    /* Windows: minimal - just try dir_path if it's a file */
-    if (is_source_file(dir_path)) {
-        paths[0] = strdup(dir_path);
-        if (paths[0]) path_count = 1;
+    /* Windows: use FindFirstFile/FindNextFile for directory scanning */
+    {
+        DWORD attrs = GetFileAttributesA(base_dir);
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY))
+            scan_dir_recursive_win(base_dir, recursive ? 1 : 0, paths, &path_count);
+        else if (is_source_file(base_dir)) {
+            paths[0] = strdup(base_dir);
+            if (paths[0]) path_count = 1;
+        }
     }
 #endif
 

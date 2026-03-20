@@ -99,12 +99,12 @@ target_link_libraries(mcp_parser PRIVATE
 )
 
 # CLI executable
-add_executable(mcp cli/main.c)
-target_link_libraries(mcp PRIVATE mcp_parser)
-target_include_directories(mcp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_executable(metacall-parser cli/main.c)
+target_link_libraries(metacall-parser PRIVATE mcp_parser)
+target_include_directories(metacall-parser PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Install
-install(TARGETS mcp mcp_parser
+install(TARGETS metacall-parser mcp_parser
   RUNTIME DESTINATION bin
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
