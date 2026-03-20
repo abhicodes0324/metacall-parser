@@ -1,4 +1,4 @@
-# MCP Prototype - Multi-Language Parser for MetaCall
+# metacall-parser - Multi-Language Parser for MetaCall
 
 A cross-platform C/C++ tool and library for parsing multi-language projects using [Tree Sitter](https://tree-sitter.github.io/tree-sitter/). Extracts functions, classes, and builds dependency trees without runtime execution.
 
@@ -225,7 +225,7 @@ $ metacall-parser deps tests/
 ## Project Structure
 
 ```
-mcp-prototype/
+metacall-parser/
 ├── include/
 │   └── mcp_parser.h      # Public C API
 ├── src/
@@ -241,9 +241,12 @@ mcp-prototype/
 ├── tests/
 │   ├── sample.py
 │   ├── sample.js
+│   ├── sample.rb
 │   ├── utils.py
 │   ├── utils.js
-│   └── sample.rb
+│   └── utils.rb
+├── scripts/
+│   └── fetch-deps.sh
 └── CMakeLists.txt
 ```
 
