@@ -1,14 +1,14 @@
 /**
- * MCP Parser - C API implementation
+ * metacall-parser - C API implementation
  * JSON export for parse results
  */
 
-#include "mcp_parser.h"
+#include "metacall_parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-const char *mcp_parser_version(void)
+const char *metacall_parser_version(void)
 {
     return "0.1.0";
 }
@@ -26,10 +26,10 @@ static void json_escape(const char *s, char *out, size_t out_size)
     out[j] = '\0';
 }
 
-char *mcp_result_to_json(const mcp_result *result)
+char *metacall_result_to_json(const metacall_result *result)
 {
     if (!result) return NULL;
-    const mcp_file_result *fr = mcp_result_get_file((mcp_result *)result);
+    const metacall_file_result *fr = metacall_result_get_file((metacall_result *)result);
     if (!fr) return NULL;
 
     size_t cap = 4096;
@@ -50,12 +50,12 @@ char *mcp_result_to_json(const mcp_result *result)
     APPEND("{\"file\":\"");
     APPEND(path_esc);
     APPEND("\",\"language\":\"");
-    APPEND(mcp_lang_name(fr->language));
+    APPEND(metacall_lang_name(fr->language));
     APPEND("\",\"functions\":[");
 
     int first = 1;
     for (size_t i = 0; i < fr->symbol_count; i++) {
-        if (fr->symbols[i].type != MCP_SYMBOL_FUNCTION && fr->symbols[i].type != MCP_SYMBOL_METHOD)
+        if (fr->symbols[i].type != METACALL_SYMBOL_FUNCTION && fr->symbols[i].type != METACALL_SYMBOL_METHOD)
             continue;
         if (!first) APPEND(",");
         first = 0;
@@ -82,7 +82,7 @@ char *mcp_result_to_json(const mcp_result *result)
     APPEND("],\"classes\":[");
     first = 1;
     for (size_t i = 0; i < fr->symbol_count; i++) {
-        if (fr->symbols[i].type != MCP_SYMBOL_CLASS) continue;
+        if (fr->symbols[i].type != METACALL_SYMBOL_CLASS) continue;
         if (!first) APPEND(",");
         first = 0;
         json_escape(fr->symbols[i].name ? fr->symbols[i].name : "", name_esc, sizeof(name_esc));
@@ -106,10 +106,10 @@ char *mcp_result_to_json(const mcp_result *result)
     return json;
 }
 
-char *mcp_result_to_inspect_json(const mcp_result *result)
+char *metacall_result_to_inspect_json(const metacall_result *result)
 {
     if (!result) return NULL;
-    const mcp_file_result *fr = mcp_result_get_file((mcp_result *)result);
+    const metacall_file_result *fr = metacall_result_get_file((metacall_result *)result);
     if (!fr) return NULL;
 
     /* Module name = filename without extension */
@@ -135,7 +135,7 @@ char *mcp_result_to_inspect_json(const mcp_result *result)
     memcpy(json + len, s, _n + 1); len += _n; \
 } while(0)
 
-    const char *tag = mcp_lang_tag(fr->language);
+    const char *tag = metacall_lang_tag(fr->language);
 
     APPEND2("{\"");
     APPEND2(tag);
@@ -149,8 +149,8 @@ char *mcp_result_to_inspect_json(const mcp_result *result)
 
     int first = 1;
     for (size_t i = 0; i < fr->symbol_count; i++) {
-        if (fr->symbols[i].type != MCP_SYMBOL_FUNCTION &&
-            fr->symbols[i].type != MCP_SYMBOL_METHOD)
+        if (fr->symbols[i].type != METACALL_SYMBOL_FUNCTION &&
+            fr->symbols[i].type != METACALL_SYMBOL_METHOD)
             continue;
         if (!first) APPEND2(",");
         first = 0;
@@ -181,7 +181,7 @@ char *mcp_result_to_inspect_json(const mcp_result *result)
     APPEND2("],\"classes\":[");
     first = 1;
     for (size_t i = 0; i < fr->symbol_count; i++) {
-        if (fr->symbols[i].type != MCP_SYMBOL_CLASS) continue;
+        if (fr->symbols[i].type != METACALL_SYMBOL_CLASS) continue;
         if (!first) APPEND2(",");
         first = 0;
         json_escape(fr->symbols[i].name ? fr->symbols[i].name : "", name_esc, sizeof(name_esc));

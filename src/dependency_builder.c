@@ -2,7 +2,7 @@
  * Dependency graph builder for multi-language projects
  */
 
-#include "mcp_parser.h"
+#include "metacall_parser.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -22,7 +22,7 @@
 
 struct dep_node {
     char *path;
-    mcp_file_result *data;
+    metacall_file_result *data;
 };
 
 struct dep_edge {
@@ -31,7 +31,7 @@ struct dep_edge {
     char *import_spec;
 };
 
-struct mcp_dep_graph_s {
+struct metacall_dep_graph_s {
     struct dep_node *nodes;
     size_t node_count;
     struct dep_edge *edges;
@@ -50,9 +50,9 @@ static int is_source_file(const char *path)
     return 0;
 }
 
-static mcp_file_result *copy_file_result(const mcp_file_result *src)
+static metacall_file_result *copy_file_result(const metacall_file_result *src)
 {
-    mcp_file_result *dst = calloc(1, sizeof(*dst));
+    metacall_file_result *dst = calloc(1, sizeof(*dst));
     if (!dst) return NULL;
 
     dst->file_path = src->file_path ? strdup(src->file_path) : NULL;
@@ -63,7 +63,7 @@ static mcp_file_result *copy_file_result(const mcp_file_result *src)
     dst->imports = NULL;
 
     if (src->symbol_count > 0) {
-        dst->symbols = malloc(src->symbol_count * sizeof(mcp_symbol));
+        dst->symbols = malloc(src->symbol_count * sizeof(metacall_symbol));
         if (dst->symbols) {
             for (size_t i = 0; i < src->symbol_count; i++) {
                 dst->symbols[i] = src->symbols[i];
@@ -86,7 +86,7 @@ static mcp_file_result *copy_file_result(const mcp_file_result *src)
     }
 
     if (src->import_count > 0) {
-        dst->imports = malloc(src->import_count * sizeof(mcp_import));
+        dst->imports = malloc(src->import_count * sizeof(metacall_import));
         if (dst->imports) {
             for (size_t i = 0; i < src->import_count; i++) {
                 dst->imports[i].module = src->imports[i].module ? strdup(src->imports[i].module) : NULL;
@@ -100,7 +100,7 @@ static mcp_file_result *copy_file_result(const mcp_file_result *src)
     return dst;
 }
 
-static void free_file_result(mcp_file_result *f)
+static void free_file_result(metacall_file_result *f)
 {
     if (!f) return;
     free(f->file_path);
@@ -126,12 +126,12 @@ static void free_file_result(mcp_file_result *f)
     free(f);
 }
 
-static int add_edge(mcp_dep_graph *graph, const char *from, const char *to, const char *import_spec)
+static int add_edge(metacall_dep_graph *graph, const char *from, const char *to, const char *import_spec)
 {
     if (graph->edge_count >= MAX_EDGES) {
         static int warned;
         if (!warned) {
-            fprintf(stderr, "mcp: warning: dependency edge limit (%d) reached, some edges may be missing\n", MAX_EDGES);
+            fprintf(stderr, "metacall-parser: warning: dependency edge limit (%d) reached, some edges may be missing\n", MAX_EDGES);
             warned = 1;
         }
         return -1;
@@ -169,7 +169,7 @@ static int path_eq(const char *a, const char *b)
  * import_spec: the import string (e.g. "./utils", "utils", "../foo")
  */
 static int resolve_import_to_node(const char *from_file, const char *import_spec,
-                                   mcp_lang_id lang, struct dep_node *nodes, size_t node_count,
+                                   metacall_lang_id lang, struct dep_node *nodes, size_t node_count,
                                    char *out_path, size_t out_size)
 {
     /* Get directory of the importing file */
@@ -203,7 +203,7 @@ static int resolve_import_to_node(const char *from_file, const char *import_spec
     const char *ext = strrchr(candidate, '.');
     if (!ext || (strcmp(ext, ".py") != 0 && strcmp(ext, ".js") != 0 && strcmp(ext, ".ts") != 0 &&
                  strcmp(ext, ".tsx") != 0 && strcmp(ext, ".jsx") != 0 && strcmp(ext, ".rb") != 0)) {
-        const char *prefer = (lang == MCP_LANG_PYTHON) ? ".py" : (lang == MCP_LANG_RUBY) ? ".rb" : ".js";
+        const char *prefer = (lang == METACALL_LANG_PYTHON) ? ".py" : (lang == METACALL_LANG_RUBY) ? ".rb" : ".js";
         const char *try_exts[] = {".py", ".js", ".ts", ".rb", NULL};
         /* Try preferred extension first */
         for (int round = 0; round < 2; round++) {
@@ -276,7 +276,7 @@ static void scan_dir_recursive(const char *dir_path, int recursive,
 
     while ((ent = readdir(d)) != NULL) {
         if (*out_count >= MAX_FILES) {
-            fprintf(stderr, "mcp: warning: file limit (%d) reached, some files may be omitted\n", MAX_FILES);
+            fprintf(stderr, "metacall-parser: warning: file limit (%d) reached, some files may be omitted\n", MAX_FILES);
             break;
         }
         if (ent->d_name[0] == '.') continue;
@@ -311,7 +311,7 @@ static void scan_dir_recursive_win(const char *dir_path, int recursive,
 
     do {
         if (*out_count >= MAX_FILES) {
-            fprintf(stderr, "mcp: warning: file limit (%d) reached, some files may be omitted\n", MAX_FILES);
+            fprintf(stderr, "metacall-parser: warning: file limit (%d) reached, some files may be omitted\n", MAX_FILES);
             break;
         }
         if (fd.cFileName[0] == '.') continue;
@@ -333,7 +333,7 @@ static void scan_dir_recursive_win(const char *dir_path, int recursive,
 }
 #endif
 
-mcp_dep_graph *mcp_parser_build_deps(mcp_parser *parser, const char *dir_path, int recursive)
+metacall_dep_graph *metacall_parser_build_deps(metacall_parser *parser, const char *dir_path, int recursive)
 {
     if (!parser || !dir_path) return NULL;
 
@@ -368,23 +368,23 @@ mcp_dep_graph *mcp_parser_build_deps(mcp_parser *parser, const char *dir_path, i
         return NULL;
     }
 
-    mcp_dep_graph *graph = calloc(1, sizeof(*graph));
+    metacall_dep_graph *graph = calloc(1, sizeof(*graph));
     if (!graph) goto fail;
     graph->nodes = calloc(MAX_FILES, sizeof(struct dep_node));
     graph->edges = calloc(MAX_EDGES, sizeof(struct dep_edge));
     if (!graph->nodes || !graph->edges) goto fail;
 
     for (size_t i = 0; i < path_count; i++) {
-        mcp_result *res = mcp_parser_parse_file(parser, paths[i], NULL, 0);
+        metacall_result *res = metacall_parser_parse_file(parser, paths[i], NULL, 0);
         if (!res) {
             free(paths[i]);
             paths[i] = NULL;
             continue;
         }
 
-        const mcp_file_result *fr = mcp_result_get_file(res);
-        mcp_file_result *copy = copy_file_result(fr);
-        mcp_result_free(res);
+        const metacall_file_result *fr = metacall_result_get_file(res);
+        metacall_file_result *copy = copy_file_result(fr);
+        metacall_result_free(res);
         if (!copy) {
             free(paths[i]);
             paths[i] = NULL;
@@ -440,7 +440,7 @@ fail:
     return NULL;
 }
 
-void mcp_dep_graph_free(mcp_dep_graph *graph)
+void metacall_dep_graph_free(metacall_dep_graph *graph)
 {
     if (!graph) return;
     for (size_t i = 0; i < graph->node_count; i++) {
@@ -471,7 +471,7 @@ static size_t json_escape(const char *s, char *out, size_t out_size)
     return j;
 }
 
-char *mcp_dep_graph_to_json(mcp_dep_graph *graph)
+char *metacall_dep_graph_to_json(metacall_dep_graph *graph)
 {
     if (!graph) return NULL;
 
@@ -500,13 +500,13 @@ char *mcp_dep_graph_to_json(mcp_dep_graph *graph)
         snprintf(buf, sizeof(buf), "{\"id\":\"%s\",\"path\":\"%s\",\"symbols\":[",
                  path_esc, path_esc);
         APPEND(buf);
-        mcp_file_result *fr = graph->nodes[i].data;
+        metacall_file_result *fr = graph->nodes[i].data;
         for (size_t j = 0; fr && j < fr->symbol_count; j++) {
             if (j > 0) APPEND(",");
             char name_esc[512];
             json_escape(fr->symbols[j].name ? fr->symbols[j].name : "", name_esc, sizeof(name_esc));
-            const char *typ = fr->symbols[j].type == MCP_SYMBOL_FUNCTION ? "function" :
-                             fr->symbols[j].type == MCP_SYMBOL_CLASS ? "class" : "method";
+            const char *typ = fr->symbols[j].type == METACALL_SYMBOL_FUNCTION ? "function" :
+                             fr->symbols[j].type == METACALL_SYMBOL_CLASS ? "class" : "method";
             snprintf(buf, sizeof(buf), "{\"name\":\"%s\",\"type\":\"%s\",\"line\":%u}",
                      name_esc, typ, (unsigned)fr->symbols[j].line);
             APPEND(buf);

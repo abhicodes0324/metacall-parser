@@ -1,4 +1,4 @@
-"""Sample Python file for MCP parser testing"""
+"""Sample Python file for metacall-parser testing"""
 
 import os
 import sys

@@ -1,4 +1,4 @@
-/** Sample JavaScript file for MCP parser testing */
+/** Sample JavaScript file for metacall-parser testing */
 
 const fs = require('fs');
 const { helper } = require('./utils');

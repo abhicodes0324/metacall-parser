@@ -3,7 +3,7 @@
  * Extracts: methods (def), classes, and require/require_relative calls.
  */
 
-#include "mcp_parser.h"
+#include "metacall_parser.h"
 #include <tree_sitter/api.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,11 +31,11 @@ static void get_node_text(TSNode node, const char *source, char *out, size_t out
     out[len] = '\0';
 }
 
-static int add_symbol(mcp_file_result *out, mcp_symbol_type type,
+static int add_symbol(metacall_file_result *out, metacall_symbol_type type,
                       const char *name, uint32_t line, const char *parent_class)
 {
     if (out->symbol_count >= MAX_SYMBOLS) return -1;
-    mcp_symbol *s = &out->symbols[out->symbol_count];
+    metacall_symbol *s = &out->symbols[out->symbol_count];
     s->type = type;
     s->name = strdup(name);
     s->line = line;
@@ -48,12 +48,12 @@ static int add_symbol(mcp_file_result *out, mcp_symbol_type type,
     return 0;
 }
 
-static int add_import(mcp_file_result *out, const char *module,
+static int add_import(metacall_file_result *out, const char *module,
                       const char *alias, uint32_t line)
 {
     (void)alias;
     if (out->import_count >= MAX_IMPORTS) return -1;
-    mcp_import *imp = &out->imports[out->import_count];
+    metacall_import *imp = &out->imports[out->import_count];
     imp->module = strdup(module);
     imp->alias = NULL;
     imp->line = line;
@@ -62,7 +62,7 @@ static int add_import(mcp_file_result *out, const char *module,
 }
 
 static void extract_ruby(TSNode node, const char *source,
-                         mcp_file_result *out, const char *class_name)
+                         metacall_file_result *out, const char *class_name)
 {
     const char *type = ts_node_type(node);
 
@@ -73,7 +73,7 @@ static void extract_ruby(TSNode node, const char *source,
             char name[256];
             get_node_text(name_node, source, name, sizeof(name));
             TSPoint pt = ts_node_start_point(node);
-            add_symbol(out, class_name ? MCP_SYMBOL_METHOD : MCP_SYMBOL_FUNCTION,
+            add_symbol(out, class_name ? METACALL_SYMBOL_METHOD : METACALL_SYMBOL_FUNCTION,
                        name, pt.row + 1, class_name);
         }
         return;
@@ -86,7 +86,7 @@ static void extract_ruby(TSNode node, const char *source,
             char name[256];
             get_node_text(name_node, source, name, sizeof(name));
             TSPoint pt = ts_node_start_point(node);
-            add_symbol(out, MCP_SYMBOL_CLASS, name, pt.row + 1, NULL);
+            add_symbol(out, METACALL_SYMBOL_CLASS, name, pt.row + 1, NULL);
 
             TSNode body = ts_node_child_by_field_name(node, "body", 4);
             if (!ts_node_is_null(body)) {
@@ -135,13 +135,13 @@ static void extract_ruby(TSNode node, const char *source,
     }
 }
 
-int ruby_extract(const TSTree *tree, const char *source, mcp_file_result *out)
+int ruby_extract(const TSTree *tree, const char *source, metacall_file_result *out)
 {
     TSNode root = ts_tree_root_node(tree);
     if (ts_node_is_null(root)) return -1;
 
-    out->symbols = calloc(MAX_SYMBOLS, sizeof(mcp_symbol));
-    out->imports = calloc(MAX_IMPORTS, sizeof(mcp_import));
+    out->symbols = calloc(MAX_SYMBOLS, sizeof(metacall_symbol));
+    out->imports = calloc(MAX_IMPORTS, sizeof(metacall_import));
     if (!out->symbols || !out->imports) {
         if (out->symbols) free(out->symbols);
         if (out->imports) free(out->imports);

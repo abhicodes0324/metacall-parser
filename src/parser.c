@@ -1,8 +1,8 @@
 /**
- * MCP Parser - Core parsing logic
+ * metacall-parser - Core parsing logic
  */
 
-#include "mcp_parser.h"
+#include "metacall_parser.h"
 #include <tree_sitter/api.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,46 +14,46 @@ const TSLanguage *tree_sitter_javascript(void);
 const TSLanguage *tree_sitter_ruby(void);
 
 /* Forward declarations for extractors */
-typedef int (*extract_fn)(const TSTree *tree, const char *source, mcp_file_result *out);
+typedef int (*extract_fn)(const TSTree *tree, const char *source, metacall_file_result *out);
 
-extern int python_extract(const TSTree *tree, const char *source, mcp_file_result *out);
-extern int js_extract(const TSTree *tree, const char *source, mcp_file_result *out);
-extern int ruby_extract(const TSTree *tree, const char *source, mcp_file_result *out);
+extern int python_extract(const TSTree *tree, const char *source, metacall_file_result *out);
+extern int js_extract(const TSTree *tree, const char *source, metacall_file_result *out);
+extern int ruby_extract(const TSTree *tree, const char *source, metacall_file_result *out);
 
 typedef struct {
-    mcp_lang_id   id;
+    metacall_lang_id   id;
     const char   *name;
     const char   *tag;          /* MetaCall loader tag */
     const char   *extensions[8];
     const TSLanguage *(*grammar)(void);
     extract_fn    extract;
-} mcp_lang_def;
+} metacall_lang_def;
 
-static const mcp_lang_def LANGUAGES[] = {
-    { MCP_LANG_PYTHON,     "python",     "py",
+static const metacall_lang_def LANGUAGES[] = {
+    { METACALL_LANG_PYTHON,     "python",     "py",
       { "py", NULL },
       tree_sitter_python,  python_extract },
-    { MCP_LANG_JAVASCRIPT, "javascript", "node",
+    { METACALL_LANG_JAVASCRIPT, "javascript", "node",
       { "js", "mjs", "cjs", "ts", "tsx", "jsx", NULL },
       tree_sitter_javascript, js_extract },
-    { MCP_LANG_RUBY,       "ruby",       "rb",
+    { METACALL_LANG_RUBY,       "ruby",       "rb",
       { "rb", NULL },
       tree_sitter_ruby,    ruby_extract }
 };
 
 #define LANG_COUNT (sizeof(LANGUAGES) / sizeof(LANGUAGES[0]))
 
-struct mcp_parser_s {
+struct metacall_parser_s {
     TSParser *ts_parser;
 };
 
-struct mcp_result_s {
-    mcp_file_result file;
+struct metacall_result_s {
+    metacall_file_result file;
 };
 
-mcp_parser *mcp_parser_create(void)
+metacall_parser *metacall_parser_create(void)
 {
-    mcp_parser *p = calloc(1, sizeof(*p));
+    metacall_parser *p = calloc(1, sizeof(*p));
     if (!p) return NULL;
 
     p->ts_parser = ts_parser_new();
@@ -64,7 +64,7 @@ mcp_parser *mcp_parser_create(void)
     return p;
 }
 
-void mcp_parser_destroy(mcp_parser *parser)
+void metacall_parser_destroy(metacall_parser *parser)
 {
     if (!parser) return;
     if (parser->ts_parser) {
@@ -73,15 +73,15 @@ void mcp_parser_destroy(mcp_parser *parser)
     free(parser);
 }
 
-mcp_lang_id mcp_lang_from_path(const char *path)
+metacall_lang_id metacall_lang_from_path(const char *path)
 {
-    if (!path) return MCP_LANG_UNKNOWN;
+    if (!path) return METACALL_LANG_UNKNOWN;
     const char *ext = strrchr(path, '.');
-    if (!ext) return MCP_LANG_UNKNOWN;
+    if (!ext) return METACALL_LANG_UNKNOWN;
     ext++;
 
     for (size_t i = 0; i < LANG_COUNT; i++) {
-        const mcp_lang_def *lang = &LANGUAGES[i];
+        const metacall_lang_def *lang = &LANGUAGES[i];
         for (size_t j = 0; lang->extensions[j]; j++) {
             if (strcmp(ext, lang->extensions[j]) == 0) {
                 return lang->id;
@@ -89,10 +89,10 @@ mcp_lang_id mcp_lang_from_path(const char *path)
         }
     }
 
-    return MCP_LANG_UNKNOWN;
+    return METACALL_LANG_UNKNOWN;
 }
 
-const char *mcp_lang_name(mcp_lang_id lang)
+const char *metacall_lang_name(metacall_lang_id lang)
 {
     for (size_t i = 0; i < LANG_COUNT; i++) {
         if (LANGUAGES[i].id == lang)
@@ -101,7 +101,7 @@ const char *mcp_lang_name(mcp_lang_id lang)
     return "unknown";
 }
 
-const char *mcp_lang_tag(mcp_lang_id lang)
+const char *metacall_lang_tag(metacall_lang_id lang)
 {
     for (size_t i = 0; i < LANG_COUNT; i++) {
         if (LANGUAGES[i].id == lang)
@@ -111,7 +111,7 @@ const char *mcp_lang_tag(mcp_lang_id lang)
 }
 
 /* Set parser language */
-static int parser_set_lang(mcp_parser *parser, mcp_lang_id lang)
+static int parser_set_lang(metacall_parser *parser, metacall_lang_id lang)
 {
     const TSLanguage *ts_lang = NULL;
     for (size_t i = 0; i < LANG_COUNT; i++) {
@@ -151,7 +151,7 @@ static char *read_file(const char *path, size_t *out_len)
     return buf;
 }
 
-mcp_result *mcp_parser_parse_file(mcp_parser *parser, const char *file_path,
+metacall_result *metacall_parser_parse_file(metacall_parser *parser, const char *file_path,
                                    const char *content, size_t content_len)
 {
     if (!parser || !file_path) return NULL;
@@ -167,8 +167,8 @@ mcp_result *mcp_parser_parse_file(mcp_parser *parser, const char *file_path,
         if (!source) return NULL;
     }
 
-    mcp_lang_id lang = mcp_lang_from_path(file_path);
-    if (lang == MCP_LANG_UNKNOWN) {
+    metacall_lang_id lang = metacall_lang_from_path(file_path);
+    if (lang == METACALL_LANG_UNKNOWN) {
         if (alloc_source) free(source);
         return NULL;
     }
@@ -184,7 +184,7 @@ mcp_result *mcp_parser_parse_file(mcp_parser *parser, const char *file_path,
         return NULL;
     }
 
-    mcp_result *result = calloc(1, sizeof(*result));
+    metacall_result *result = calloc(1, sizeof(*result));
     if (!result) {
         ts_tree_delete(tree);
         if (alloc_source) free(source);
@@ -210,16 +210,16 @@ mcp_result *mcp_parser_parse_file(mcp_parser *parser, const char *file_path,
     if (alloc_source) free(source);
 
     if (ok != 0) {
-        mcp_result_free(result);
+        metacall_result_free(result);
         return NULL;
     }
     return result;
 }
 
-void mcp_result_free(mcp_result *result)
+void metacall_result_free(metacall_result *result)
 {
     if (!result) return;
-    mcp_file_result *f = &result->file;
+    metacall_file_result *f = &result->file;
     if (f->file_path) free(f->file_path);
     for (size_t i = 0; i < f->symbol_count; i++) {
         if (f->symbols[i].name) free(f->symbols[i].name);
@@ -239,7 +239,7 @@ void mcp_result_free(mcp_result *result)
     free(result);
 }
 
-const mcp_file_result *mcp_result_get_file(mcp_result *result)
+const metacall_file_result *metacall_result_get_file(metacall_result *result)
 {
     return result ? &result->file : NULL;
 }

@@ -73,8 +73,8 @@ target_include_directories(tree-sitter-ruby-lib PUBLIC
   ${TS_RUBY_DIR}/src
 )
 
-# MCP Parser library
-add_library(mcp_parser STATIC
+# metacall-parser library
+add_library(metacall_parser STATIC
   src/parser.c
   src/extractors/python_extractor.c
   src/extractors/js_extractor.c
@@ -83,7 +83,7 @@ add_library(mcp_parser STATIC
   src/api.c
 )
 
-target_include_directories(mcp_parser PUBLIC
+target_include_directories(metacall_parser PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${TS_CORE_DIR}/lib/include
   ${TS_PYTHON_DIR}/src
@@ -91,7 +91,7 @@ target_include_directories(mcp_parser PUBLIC
   ${TS_RUBY_DIR}/src
 )
 
-target_link_libraries(mcp_parser PRIVATE
+target_link_libraries(metacall_parser PRIVATE
   tree-sitter-lib
   tree-sitter-python-lib
   tree-sitter-javascript-lib
@@ -100,13 +100,13 @@ target_link_libraries(mcp_parser PRIVATE
 
 # CLI executable
 add_executable(metacall-parser cli/main.c)
-target_link_libraries(metacall-parser PRIVATE mcp_parser)
+target_link_libraries(metacall-parser PRIVATE metacall_parser)
 target_include_directories(metacall-parser PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Install
-install(TARGETS metacall-parser mcp_parser
+install(TARGETS metacall-parser metacall_parser
   RUNTIME DESTINATION bin
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
 )
-install(FILES include/mcp_parser.h DESTINATION include)
+install(FILES include/metacall_parser.h DESTINATION include)

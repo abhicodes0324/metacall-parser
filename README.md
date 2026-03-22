@@ -79,34 +79,34 @@ When running from the `build/` directory, use relative paths like `../tests/samp
 ### C API Example
 
 ```c
-#include "mcp_parser.h"
+#include "metacall_parser.h"
 
 int main(void) {
-    mcp_parser *parser = mcp_parser_create();
-    mcp_result *result = mcp_parser_parse_file(parser, "script.py", NULL, 0);
+    metacall_parser *parser = metacall_parser_create();
+    metacall_result *result = metacall_parser_parse_file(parser, "script.py", NULL, 0);
 
     if (result) {
-        const mcp_file_result *fr = mcp_result_get_file(result);
+        const metacall_file_result *fr = metacall_result_get_file(result);
         for (size_t i = 0; i < fr->symbol_count; i++) {
-            const mcp_symbol *s = &fr->symbols[i];
-            if (s->type == MCP_SYMBOL_FUNCTION || s->type == MCP_SYMBOL_METHOD) {
+            const metacall_symbol *s = &fr->symbols[i];
+            if (s->type == METACALL_SYMBOL_FUNCTION || s->type == METACALL_SYMBOL_METHOD) {
                 printf("%s%s: %s(",
                        s->is_async ? "async " : "",
-                       s->type == MCP_SYMBOL_METHOD ? "method" : "function",
+                       s->type == METACALL_SYMBOL_METHOD ? "method" : "function",
                        s->name);
                 for (size_t p = 0; p < s->param_count; p++) {
                     if (p > 0) printf(", ");
                     printf("%s", s->param_names[p]);
                 }
                 printf(") [line %u]\n", s->line);
-            } else if (s->type == MCP_SYMBOL_CLASS) {
+            } else if (s->type == METACALL_SYMBOL_CLASS) {
                 printf("class: %s [line %u]\n", s->name, s->line);
             }
         }
-        mcp_result_free(result);
+        metacall_result_free(result);
     }
 
-    mcp_parser_destroy(parser);
+    metacall_parser_destroy(parser);
     return 0;
 }
 ```
@@ -228,7 +228,7 @@ $ metacall-parser deps tests/
 ```
 metacall-parser/
 ├── include/
-│   └── mcp_parser.h      # Public C API
+│   └── metacall_parser.h      # Public C API
 ├── src/
 │   ├── parser.c          # Core parsing logic
 │   ├── api.c             # JSON export helpers
@@ -273,7 +273,7 @@ The parser is designed for easy extension. MetaCall supports Python, JavaScript,
 
 1. Add Tree Sitter grammar as FetchContent dependency
 2. Create `src/extractors/<lang>_extractor.c` implementing extraction logic
-3. Register in `mcp_lang_from_path()` and the `LANGUAGES[]` table in `parser.c`
+3. Register in `metacall_lang_from_path()` and the `LANGUAGES[]` table in `parser.c`
 4. Add the file extension to `is_source_file()` in `dependency_builder.c` so `metacall-parser deps` includes it
 5. Add query/traversal for function, class, and import nodes
 

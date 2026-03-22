@@ -1,4 +1,4 @@
-## Sample Ruby file for MCP parser testing
+## Sample Ruby file for metacall-parser testing
 
 require_relative "utils"
 
