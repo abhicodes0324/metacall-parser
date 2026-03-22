@@ -163,7 +163,7 @@ char *metacall_result_to_inspect_json(const metacall_result *result)
             json_escape(fr->symbols[i].param_names && fr->symbols[i].param_names[p]
                         ? fr->symbols[i].param_names[p] : "", pesc, sizeof(pesc));
             char pbuf[200];
-            snprintf(pbuf, sizeof(pbuf), "{\"name\":\"%s\",\"type\":\"Unknown\"}", pesc);
+            snprintf(pbuf, sizeof(pbuf), "{\"name\":\"%s\",\"type\":{\"name\":\"\",\"id\":15}}", pesc);
             strcat(args_json, pbuf);
         }
         strcat(args_json, "]");
@@ -171,7 +171,7 @@ char *metacall_result_to_inspect_json(const metacall_result *result)
         char buf[1200];
         snprintf(buf, sizeof(buf),
                  "{\"name\":\"%s\",\"async\":%s,"
-                 "\"signature\":{\"ret\":{\"type\":\"Unknown\"},\"args\":%s}}",
+                 "\"signature\":{\"ret\":{\"type\":{\"name\":\"\",\"id\":15}},\"args\":%s}}",
                  name_esc,
                  fr->symbols[i].is_async ? "true" : "false",
                  args_json);

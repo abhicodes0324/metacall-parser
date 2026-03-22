@@ -20,21 +20,20 @@ Owned and maintained by [abhicodes0324](https://github.com/abhicodes0324).
 
 ### Prerequisites
 
-- CMake 3.14+
+- CMake 3.24+
 - C11 compiler (GCC, Clang, MSVC)
-- Git (for fetching dependencies)
+- Network access (for first-time FetchContent download)
 
 ### Build Steps
 
 ```bash
-# 1. Fetch dependencies (requires curl, run once)
-./scripts/fetch-deps.sh
-
-# 2. Build (from project root)
+# Build (from project root) - Tree-sitter grammars are fetched automatically via CMake FetchContent
 mkdir build && cd build
 cmake ..
 cmake --build .
 ```
+
+On first configure, CMake fetches Tree-sitter grammars via FetchContent (requires network access).
 
 ### Install
 

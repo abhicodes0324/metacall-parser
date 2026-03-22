@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.24)
 project(metacall-parser VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
@@ -9,16 +9,35 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Tree Sitter - use vendor/ (populate via: ./scripts/fetch-deps.sh)
-set(TS_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/tree-sitter)
-set(TS_PYTHON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/tree-sitter-python)
-set(TS_JS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/tree-sitter-javascript)
-set(TS_RUBY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/tree-sitter-ruby)
+# Tree Sitter - fetch via CMake FetchContent (per mentor guidance)
+# Populate only (no add_subdirectory) to avoid conflicting targets from grammar CMakeLists
+include(FetchContent)
+FetchContent_Declare(treesitter
+  URL      https://github.com/tree-sitter/tree-sitter/archive/refs/heads/master.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_Declare(treesitter_python
+  URL      https://github.com/tree-sitter/tree-sitter-python/archive/refs/heads/master.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_Declare(treesitter_javascript
+  URL      https://github.com/tree-sitter/tree-sitter-javascript/archive/refs/heads/master.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_Declare(treesitter_ruby
+  URL      https://github.com/tree-sitter/tree-sitter-ruby/archive/refs/heads/master.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_Populate(treesitter)
+FetchContent_Populate(treesitter_python)
+FetchContent_Populate(treesitter_javascript)
+FetchContent_Populate(treesitter_ruby)
 
-if(NOT EXISTS ${TS_CORE_DIR}/lib/src/lib.c)
-  message(FATAL_ERROR "Tree Sitter not found. Run: ./scripts/fetch-deps.sh")
-endif()
-message(STATUS "Using Tree Sitter from vendor/")
+set(TS_CORE_DIR ${treesitter_SOURCE_DIR})
+set(TS_PYTHON_DIR ${treesitter_python_SOURCE_DIR})
+set(TS_JS_DIR ${treesitter_javascript_SOURCE_DIR})
+set(TS_RUBY_DIR ${treesitter_ruby_SOURCE_DIR})
+message(STATUS "Using Tree Sitter from FetchContent")
 
 # Tree-sitter core library (all required sources)
 add_library(tree-sitter-lib STATIC
