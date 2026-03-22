@@ -42,6 +42,7 @@ Run from the project root:
 
 ```bash
 # Option A: Install to /usr/local (requires sudo)
+cd ..
 sudo cmake --build build --target install
 
 # Option B: Install to user directory (no sudo)
